@@ -269,8 +269,27 @@ def index():
                         break; // Only handle the first image
                     }
                 }
+            } else {
+                // Check for pasted image URLs
+                const text = e.clipboardData.getData('text').trim();
+                if (text && isImageUrl(text)) {
+                    e.preventDefault(); // Prevent pasting into input
+                    const user = usernameInput.value.trim() || "Anon";
+                    localStorage.setItem('chat_username', user);
+                    socket.emit("message", {
+                        username: user,
+                        type: 'image',
+                        url: text,
+                        msg: ''
+                    });
+                }
             }
         });
+        
+        function isImageUrl(url) {
+            const imageExtensions = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
+            return url.startsWith('http') && imageExtensions.test(url);
+        }
         
         document.getElementById("send").addEventListener("click", sendMessage);
         
