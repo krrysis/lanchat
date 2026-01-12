@@ -245,6 +245,33 @@ def index():
         }
 
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
+        
+        // Handle pasted images/GIFs
+        input.addEventListener('paste', (e) => {
+            const files = e.clipboardData.files;
+            if (files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (file.type.startsWith('image/')) {
+                        e.preventDefault(); // Prevent pasting into input
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const user = usernameInput.value.trim() || "Anon";
+                            localStorage.setItem('chat_username', user);
+                            socket.emit("message", {
+                                username: user,
+                                type: 'image',
+                                url: reader.result, // data URL
+                                msg: '' // no caption for pasted images
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                        break; // Only handle the first image
+                    }
+                }
+            }
+        });
+        
         document.getElementById("send").addEventListener("click", sendMessage);
         
         socket.on("connect", () => {
