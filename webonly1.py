@@ -56,6 +56,7 @@ def index():
         #username { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 20%; min-width: 80px; }
         #input { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; flex: 1; min-width: 200px; }
         #imageUrl { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 30%; min-width: 150px; }
+        #imageFile { padding: 5px; border: 1px solid #d1d1d6; border-radius: 10px; width: 30%; min-width: 150px; }
         #send { 
             padding: 10px 20px; 
             background: #007aff; 
@@ -83,7 +84,9 @@ def index():
         <input id="username" placeholder="Name" value="User">
         <input id="input" placeholder="Type a message..." autocomplete="off">
         <input id="imageUrl" placeholder="Image/GIF URL (optional)" autocomplete="off">
+        <input type="file" id="imageFile" accept="image/*" style="display: none;">
         <button id="send">Send</button>
+        <button id="uploadBtn" title="Upload Image/GIF">📎</button>
     </div>
 
     <script>
@@ -93,6 +96,8 @@ def index():
         const input = document.getElementById("input");
         const usernameInput = document.getElementById("username");
         const imageUrlInput = document.getElementById("imageUrl");
+        const imageFileInput = document.getElementById("imageFile");
+        const uploadBtn = document.getElementById("uploadBtn");
         const volumeBtn = document.getElementById("volume-btn");
         
         let soundEnabled = true;
@@ -156,6 +161,30 @@ def index():
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
             volumeBtn.innerText = soundEnabled ? "🔔" : "🔕";
+        });
+
+        // Upload Image/GIF
+        uploadBtn.addEventListener('click', () => {
+            imageFileInput.click();
+        });
+
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const user = usernameInput.value.trim() || "Anon";
+                    localStorage.setItem('chat_username', user);
+                    socket.emit("message", {
+                        username: user,
+                        type: 'image',
+                        url: reader.result,
+                        msg: ''
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+            imageFileInput.value = ''; // Clear for next upload
         });
 
         // --- Chat Logic ---
@@ -273,6 +302,11 @@ def index():
                 // Check for pasted image URLs
                 const text = e.clipboardData.getData('text').trim();
                 if (text && isImageUrl(text)) {
+                    if (text.startsWith('file://')) {
+                        e.preventDefault();
+                        alert('Local files cannot be shared directly. Please use the upload button (📎) to select and send local images/GIFs.');
+                        return;
+                    }
                     e.preventDefault(); // Prevent pasting into input
                     const user = usernameInput.value.trim() || "Anon";
                     localStorage.setItem('chat_username', user);
@@ -288,7 +322,7 @@ def index():
         
         function isImageUrl(url) {
             const imageExtensions = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
-            return url.startsWith('http') && imageExtensions.test(url);
+            return (url.startsWith('http') || url.startsWith('file://')) && imageExtensions.test(url);
         }
         
         document.getElementById("send").addEventListener("click", sendMessage);
