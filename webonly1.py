@@ -50,10 +50,12 @@ def index():
             border-top: 1px solid #d1d1d6; 
             display: flex; 
             gap: 10px; 
+            flex-wrap: wrap;
         }
         
         #username { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 20%; min-width: 80px; }
-        #input { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; flex: 1; }
+        #input { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; flex: 1; min-width: 200px; }
+        #imageUrl { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 30%; min-width: 150px; }
         #send { 
             padding: 10px 20px; 
             background: #007aff; 
@@ -80,6 +82,7 @@ def index():
     <div class="input-area">
         <input id="username" placeholder="Name" value="User">
         <input id="input" placeholder="Type a message..." autocomplete="off">
+        <input id="imageUrl" placeholder="Image/GIF URL (optional)" autocomplete="off">
         <button id="send">Send</button>
     </div>
 
@@ -89,6 +92,7 @@ def index():
         const messages = document.getElementById("messages");
         const input = document.getElementById("input");
         const usernameInput = document.getElementById("username");
+        const imageUrlInput = document.getElementById("imageUrl");
         const volumeBtn = document.getElementById("volume-btn");
         
         let soundEnabled = true;
@@ -173,7 +177,8 @@ def index():
             }
 
             // NOTIFY USER HERE
-            notifyUser(data.username, data.msg);
+            const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
+            notifyUser(data.username, notifyText);
 
             const name = document.createElement("div");
             name.className = "sender-name";
@@ -181,7 +186,23 @@ def index():
             
             const bubble = document.createElement("div");
             bubble.className = "message-bubble";
-            bubble.innerText = data.msg;
+            
+            if (data.type === 'image') {
+                const img = document.createElement("img");
+                img.src = data.url;
+                img.style.maxWidth = "300px";
+                img.style.maxHeight = "300px";
+                img.style.borderRadius = "10px";
+                bubble.appendChild(img);
+                if (data.msg) {
+                    const caption = document.createElement("div");
+                    caption.innerText = data.msg;
+                    caption.style.marginTop = "5px";
+                    bubble.appendChild(caption);
+                }
+            } else {
+                bubble.innerText = data.msg;
+            }
             
             container.appendChild(name);
             container.appendChild(bubble);
@@ -203,11 +224,22 @@ def index():
         function sendMessage() {
             const msg = input.value.trim();
             const user = usernameInput.value.trim() || "Anon";
+            const imageUrl = imageUrlInput.value.trim();
             
-            if (msg) {
+            if (msg || imageUrl) {
                 localStorage.setItem('chat_username', user);
-                socket.emit("message", {username: user, msg: msg});
+                const data = {username: user};
+                if (imageUrl) {
+                    data.type = 'image';
+                    data.url = imageUrl;
+                    data.msg = msg; // optional caption
+                } else {
+                    data.type = 'text';
+                    data.msg = msg;
+                }
+                socket.emit("message", data);
                 input.value = "";
+                imageUrlInput.value = "";
                 input.focus();
             }
         }
