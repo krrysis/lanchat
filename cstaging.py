@@ -7,7 +7,13 @@ eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secure_chat_key'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60)
+
+# FIX: Added max_http_buffer_size to allow large GIFs (10MB limit)
+socketio = SocketIO(app, 
+                    cors_allowed_origins="*", 
+                    async_mode='eventlet', 
+                    ping_timeout=60, 
+                    max_http_buffer_size=10 * 1024 * 1024) 
 
 @app.route('/')
 def index():
@@ -20,7 +26,7 @@ def index():
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f2f2f7; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #d1d1d6; font-weight: bold; font-size: 1.2rem; }
+        .header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #d1d1d6; font-weight: bold; font-size: 1.2rem; transition: color 0.3s; }
         
         #messages { 
             flex: 1; 
@@ -248,10 +254,10 @@ def index():
         });
 
         // --- GLOBAL PASTE / DROP HANDLER ---
-        // We attach to 'document' to catch events even if the input loses focus (common with Emoji Pickers)
+        // Handles Windows Emoji Picker (Win+.) and standard files
         
         function handleMediaInput(e, dataTransfer) {
-            // 1. Try HTML (Browser GIFs)
+            // 1. Try HTML (Browser GIFs - preserves animation)
             const html = dataTransfer.getData('text/html');
             if (html) {
                 const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -263,10 +269,11 @@ def index():
                 }
             }
 
-            // 2. Try Files (Windows Emoji Picker / Local Uploads)
+            // 2. Try Files (Windows Emoji Picker / Drag & Drop)
             const files = dataTransfer.files;
             if (files && files.length > 0) {
                 for (let i = 0; i < files.length; i++) {
+                    // Check if it's an image
                     if (files[i].type.startsWith('image/')) {
                         e.preventDefault();
                         handleFile(files[i]);
@@ -294,34 +301,29 @@ def index():
             });
         }
 
-        // Global Paste
+        // Global Paste Listener (Works even if input isn't focused)
         document.addEventListener('paste', (e) => {
-            // If the user is pasting into the text input, we handle media but let text pass through
-            // If they are not in the input (focus lost), we try to catch media anyway
-            const handled = handleMediaInput(e, e.clipboardData);
-            
-            // If it wasn't media, and we aren't in the input box, maybe focus the input?
-            if (!handled && document.activeElement !== input) {
-               // Optional: If they paste text while not focused, focus input? 
-               // keeping it simple for now to avoid interfering with other interactions.
-            }
+            handleMediaInput(e, e.clipboardData);
         });
 
-        // Global Drag/Drop (Stops browser from opening file in new tab)
+        // Global Drag Over (Stops browser from opening file)
         document.addEventListener('dragover', (e) => {
-            e.preventDefault(); // Essential to allow 'drop' to fire
+            e.preventDefault(); 
         });
 
+        // Global Drop (Stops browser from opening file)
         document.addEventListener('drop', (e) => {
-            e.preventDefault(); // Essential to stop browser redirection
+            e.preventDefault(); 
             handleMediaInput(e, e.dataTransfer);
         });
 
         socket.on("connect", () => {
             document.querySelector('.header').style.color = '#000';
+            console.log("Connected");
         });
         socket.on("disconnect", () => {
             document.querySelector('.header').style.color = 'red';
+            console.log("Disconnected - Packet likely too large or server restart");
         });
         socket.on("message", (data) => addMessage(data));
     </script>
