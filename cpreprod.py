@@ -1,13 +1,23 @@
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit
 import eventlet
+from datetime import datetime
 
 # Standard eventlet patch for stability
 eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secure_chat_key'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60)
+
+# Max buffer size set to 10MB to allow large GIFs
+socketio = SocketIO(app, 
+                    cors_allowed_origins="*", 
+                    async_mode='eventlet', 
+                    ping_timeout=60, 
+                    max_http_buffer_size=10 * 1024 * 1024)
+
+# Global dictionary to track connected users: {session_id: username}
+CONNECTED_USERS = {}
 
 @app.route('/')
 def index():
@@ -20,7 +30,21 @@ def index():
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f2f2f7; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #d1d1d6; font-weight: bold; font-size: 1.2rem; }
+        
+        /* Updated Header to show Online Count */
+        .header { 
+            background: #fff; 
+            padding: 15px; 
+            text-align: center; 
+            border-bottom: 1px solid #d1d1d6; 
+            font-weight: bold; 
+            font-size: 1.2rem; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title { flex-grow: 1; text-align: center; }
+        .online-status { font-size: 0.9rem; color: #4cd964; font-weight: normal; }
         
         #messages { 
             flex: 1; 
@@ -41,7 +65,18 @@ def index():
             color: #000;
             line-height: 1.4;
         }
-        .sender-name { font-size: 12px; color: #8e8e93; margin-bottom: 2px; margin-left: 10px; }
+        
+        /* Meta info line (Name + Time) */
+        .message-meta { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 2px; 
+            margin-left: 10px; 
+            font-size: 12px; 
+            color: #8e8e93; 
+        }
+        .timestamp { margin-left: 8px; opacity: 0.7; font-size: 11px; }
+
         .system-message { align-self: center; font-size: 13px; color: #8e8e93; margin: 10px 0; background: transparent; box-shadow: none; }
         
         .input-area { 
@@ -68,7 +103,6 @@ def index():
         }
         #send:active { opacity: 0.8; }
         
-        /* Volume Toggle Button */
         #volume-btn {
             background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 0 10px;
         }
@@ -76,10 +110,13 @@ def index():
 </head>
 <body>
     <div class="header">
-        💬 LAN Team Chat 
-        <button id="volume-btn" title="Toggle Sound">🔔</button>
+        <button id="volume-btn" title="Toggle Sound">🔊</button>
+        <div class="header-title">🗪 LAN Chat 🖧</div>
+        <div class="online-status" id="onlineStatus">Loading...</div>
     </div>
+    
     <div id="messages"></div>
+    
     <div class="input-area">
         <input id="username" placeholder="Name" value="User">
         <input id="input" placeholder="Type a message..." autocomplete="off">
@@ -99,55 +136,38 @@ def index():
         const imageFileInput = document.getElementById("imageFile");
         const uploadBtn = document.getElementById("uploadBtn");
         const volumeBtn = document.getElementById("volume-btn");
+        const onlineStatus = document.getElementById("onlineStatus");
         
         let soundEnabled = true;
         let unreadCount = 0;
         const originalTitle = document.title;
-        
-        // Base64 short beep sound (no external file needed)
-        const notificationSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"); 
-        // Note: The base64 string above is a placeholder. 
-        // Replacing with a real short beep base64 for better experience:
         const beepUrl = "https://www.myinstants.com/media/sounds/discord-notification.mp3"; 
         const audio = new Audio(beepUrl);
 
-        // Restore username
         if(localStorage.getItem('chat_username')) {
             usernameInput.value = localStorage.getItem('chat_username');
         }
 
         // --- Notification Logic ---
-        
-        // 1. Request Browser Permission on click
         document.body.addEventListener('click', () => {
-            if (Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
+            if (Notification.permission === 'default') Notification.requestPermission();
         }, { once: true });
 
-        // 2. Handle Window Focus (Clear notifications)
         window.addEventListener('focus', () => {
             unreadCount = 0;
             document.title = originalTitle;
         });
 
         function notifyUser(sender, msg) {
-            // Only notify if window is hidden or it's not me
             if (document.hidden || sender !== usernameInput.value) {
-                
-                // Sound
                 if (soundEnabled) {
                     audio.currentTime = 0;
                     audio.play().catch(e => console.log("Audio blocked until interaction"));
                 }
-
-                // Title Flashing
                 if (document.hidden) {
                     unreadCount++;
                     document.title = `(${unreadCount}) New Message!`;
                 }
-                
-                // Desktop Notification
                 if (document.hidden && Notification.permission === "granted") {
                     new Notification(`New message from ${sender}`, {
                         body: msg,
@@ -157,34 +177,9 @@ def index():
             }
         }
 
-        // Toggle Sound
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
-            volumeBtn.innerText = soundEnabled ? "🔔" : "🔕";
-        });
-
-        // Upload Image/GIF
-        uploadBtn.addEventListener('click', () => {
-            imageFileInput.click();
-        });
-
-        imageFileInput.addEventListener('change', () => {
-            const file = imageFileInput.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const user = usernameInput.value.trim() || "Anon";
-                    localStorage.setItem('chat_username', user);
-                    socket.emit("message", {
-                        username: user,
-                        type: 'image',
-                        url: reader.result,
-                        msg: ''
-                    });
-                };
-                reader.readAsDataURL(file);
-            }
-            imageFileInput.value = ''; // Clear for next upload
+            volumeBtn.innerText = soundEnabled ? "🔊" : "🔇";
         });
 
         // --- Chat Logic ---
@@ -205,14 +200,24 @@ def index():
                 return;
             }
 
-            // NOTIFY USER HERE
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
-            const name = document.createElement("div");
-            name.className = "sender-name";
-            name.innerText = data.username;
+            // Updated Metadata (Name + Timestamp)
+            const meta = document.createElement("div");
+            meta.className = "message-meta";
             
+            const nameSpan = document.createElement("span");
+            nameSpan.innerText = data.username;
+            nameSpan.style.fontWeight = "bold";
+            
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "timestamp";
+            timeSpan.innerText = data.timestamp || ""; // Display Timestamp
+            
+            meta.appendChild(nameSpan);
+            meta.appendChild(timeSpan);
+
             const bubble = document.createElement("div");
             bubble.className = "message-bubble";
             
@@ -233,15 +238,16 @@ def index():
                 bubble.innerText = data.msg;
             }
             
-            container.appendChild(name);
+            container.appendChild(meta);
             container.appendChild(bubble);
             
             if (data.username === usernameInput.value) {
                 container.style.alignSelf = "flex-end";
                 bubble.style.background = "#007aff";
                 bubble.style.color = "#fff";
-                name.style.textAlign = "right";
-                name.style.marginRight = "10px";
+                meta.style.flexDirection = "row-reverse"; // Name/Time correct order for sent msg
+                nameSpan.style.marginLeft = "8px";
+                timeSpan.style.marginRight = "0";
             } else {
                 container.style.alignSelf = "flex-start";
             }
@@ -261,7 +267,7 @@ def index():
                 if (imageUrl) {
                     data.type = 'image';
                     data.url = imageUrl;
-                    data.msg = msg; // optional caption
+                    data.msg = msg; 
                 } else {
                     data.type = 'text';
                     data.msg = msg;
@@ -274,75 +280,128 @@ def index():
         }
 
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
-        
-        // Handle pasted images/GIFs
-        input.addEventListener('paste', (e) => {
-            const files = e.clipboardData.files;
-            if (files.length > 0) {
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    if (file.type.startsWith('image/')) {
-                        e.preventDefault(); // Prevent pasting into input
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const user = usernameInput.value.trim() || "Anon";
-                            localStorage.setItem('chat_username', user);
-                            socket.emit("message", {
-                                username: user,
-                                type: 'image',
-                                url: reader.result, // data URL
-                                msg: '' // no caption for pasted images
-                            });
-                        };
-                        reader.readAsDataURL(file);
-                        break; // Only handle the first image
-                    }
-                }
-            } else {
-                // Check for pasted image URLs
-                const text = e.clipboardData.getData('text').trim();
-                if (text && isImageUrl(text)) {
-                    if (text.startsWith('file://')) {
-                        e.preventDefault();
-                        alert('Local files cannot be shared directly. Please use the upload button (📎) to select and send local images/GIFs.');
-                        return;
-                    }
-                    e.preventDefault(); // Prevent pasting into input
-                    const user = usernameInput.value.trim() || "Anon";
-                    localStorage.setItem('chat_username', user);
-                    socket.emit("message", {
-                        username: user,
-                        type: 'image',
-                        url: text,
-                        msg: ''
-                    });
+        document.getElementById("send").addEventListener("click", sendMessage);
+
+        uploadBtn.addEventListener('click', () => imageFileInput.click());
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (file) handleFile(file);
+            imageFileInput.value = ''; 
+        });
+
+        function handleMediaInput(e, dataTransfer) {
+            const html = dataTransfer.getData('text/html');
+            if (html) {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const img = doc.querySelector('img');
+                if (img && img.src) {
+                    e.preventDefault();
+                    sendImage(img.src);
+                    return true;
                 }
             }
-        });
-        
-        function isImageUrl(url) {
-            const imageExtensions = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
-            return (url.startsWith('http') || url.startsWith('file://')) && imageExtensions.test(url);
+            const files = dataTransfer.files;
+            if (files && files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    if (files[i].type.startsWith('image/')) {
+                        e.preventDefault();
+                        handleFile(files[i]);
+                        return true; 
+                    }
+                }
+            }
+            return false;
         }
-        
-        document.getElementById("send").addEventListener("click", sendMessage);
-        
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = () => sendImage(reader.result);
+            reader.readAsDataURL(file);
+        }
+
+        function sendImage(url) {
+            const user = usernameInput.value.trim() || "Anon";
+            localStorage.setItem('chat_username', user);
+            socket.emit("message", {
+                username: user,
+                type: 'image',
+                url: url,
+                msg: ''
+            });
+        }
+
+        document.addEventListener('paste', (e) => handleMediaInput(e, e.clipboardData));
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        document.addEventListener('drop', (e) => {
+            e.preventDefault(); 
+            handleMediaInput(e, e.dataTransfer);
+        });
+
+        // --- Socket Events ---
+
         socket.on("connect", () => {
             document.querySelector('.header').style.color = '#000';
+            // Register username on connect
+            const user = usernameInput.value || "Anon";
+            socket.emit('register', user);
         });
+
         socket.on("disconnect", () => {
             document.querySelector('.header').style.color = 'red';
+            onlineStatus.innerText = "Offline";
+            onlineStatus.style.color = "red";
         });
+
         socket.on("message", (data) => addMessage(data));
+
+        // Update Online Count
+        socket.on("user_list", (data) => {
+            onlineStatus.innerText = `🟢 ${data.count} Online`;
+            onlineStatus.style.color = "#4cd964";
+            // Optional: You could list names in a tooltip here using data.users
+        });
+
     </script>
 </body>
 </html>
     """)
 
+# --- SocketIO Handlers ---
+
+@socketio.on('connect')
+def handle_connect():
+    # Wait for register event to get username
+    pass
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    # Remove user from tracking
+    if request.sid in CONNECTED_USERS:
+        del CONNECTED_USERS[request.sid]
+    broadcast_user_list()
+
+@socketio.on('register')
+def handle_register(username):
+    # Link session ID to Username
+    CONNECTED_USERS[request.sid] = username
+    broadcast_user_list()
+
 @socketio.on('message')
 def handle_message(data):
+    # Update username in case they changed it in the UI
+    CONNECTED_USERS[request.sid] = data['username']
+    
+    # Add Timestamp
+    data['timestamp'] = datetime.now().strftime('%H:%M')
+    
     emit('message', data, broadcast=True)
+    broadcast_user_list() # Update list in case name changed
+
+def broadcast_user_list():
+    # Send count and list of unique names
+    users = list(set(CONNECTED_USERS.values())) # Unique names only
+    emit('user_list', {'count': len(CONNECTED_USERS), 'users': users}, broadcast=True)
 
 if __name__ == '__main__':
-    print("[*] Server running on http://0.0.0.0:8080")
-    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
+    print("[*] Server running on http://0.0.0.0:8081")
+    socketio.run(app, host='0.0.0.0', port=8081, debug=False)

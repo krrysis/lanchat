@@ -31,7 +31,6 @@ def index():
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f2f2f7; display: flex; flex-direction: column; height: 100vh; }
         
-        /* Updated Header to show Online Count */
         .header { 
             background: #fff; 
             padding: 15px; 
@@ -44,7 +43,51 @@ def index():
             align-items: center;
         }
         .header-title { flex-grow: 1; text-align: center; }
+        
+        /* --- NEW: Online List Tooltip Styles --- */
+        .online-wrapper {
+            position: relative;
+            cursor: pointer;
+        }
+        
         .online-status { font-size: 0.9rem; color: #4cd964; font-weight: normal; }
+        
+        /* The hidden list that appears on hover */
+        .user-tooltip {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 150px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            z-index: 1000;
+            text-align: left;
+        }
+        
+        /* Show tooltip when hovering over wrapper */
+        .online-wrapper:hover .user-tooltip {
+            display: block;
+        }
+        
+        .tooltip-header {
+            font-size: 0.8rem;
+            color: #888;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+        }
+        
+        .user-item {
+            font-size: 0.9rem;
+            padding: 3px 0;
+            color: #333;
+        }
+        /* --------------------------------------- */
         
         #messages { 
             flex: 1; 
@@ -66,7 +109,6 @@ def index():
             line-height: 1.4;
         }
         
-        /* Meta info line (Name + Time) */
         .message-meta { 
             display: flex; 
             align-items: center; 
@@ -110,9 +152,14 @@ def index():
 </head>
 <body>
     <div class="header">
-        <button id="volume-btn" title="Toggle Sound">🔊</button>
-        <div class="header-title">🗪 LAN Chat 🖧</div>
-        <div class="online-status" id="onlineStatus">Loading...</div>
+        <button id="volume-btn" title="Toggle Sound">粕</button>
+        <div class="header-title">町 LAN Chat</div>
+        
+        <div class="online-wrapper">
+            <div class="online-status" id="onlineStatus">Loading...</div>
+            <div class="user-tooltip" id="userListDisplay">
+                </div>
+        </div>
     </div>
     
     <div id="messages"></div>
@@ -123,7 +170,7 @@ def index():
         <input id="imageUrl" placeholder="Image/GIF URL (optional)" autocomplete="off">
         <input type="file" id="imageFile" accept="image/*" style="display: none;">
         <button id="send">Send</button>
-        <button id="uploadBtn" title="Upload Image/GIF">📎</button>
+        <button id="uploadBtn" title="Upload Image/GIF">梼</button>
     </div>
 
     <script>
@@ -137,6 +184,7 @@ def index():
         const uploadBtn = document.getElementById("uploadBtn");
         const volumeBtn = document.getElementById("volume-btn");
         const onlineStatus = document.getElementById("onlineStatus");
+        const userListDisplay = document.getElementById("userListDisplay");
         
         let soundEnabled = true;
         let unreadCount = 0;
@@ -179,7 +227,7 @@ def index():
 
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
-            volumeBtn.innerText = soundEnabled ? "🔊" : "🔇";
+            volumeBtn.innerText = soundEnabled ? "粕" : "舶";
         });
 
         // --- Chat Logic ---
@@ -203,7 +251,6 @@ def index():
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
-            // Updated Metadata (Name + Timestamp)
             const meta = document.createElement("div");
             meta.className = "message-meta";
             
@@ -213,7 +260,7 @@ def index():
             
             const timeSpan = document.createElement("span");
             timeSpan.className = "timestamp";
-            timeSpan.innerText = data.timestamp || ""; // Display Timestamp
+            timeSpan.innerText = data.timestamp || ""; 
             
             meta.appendChild(nameSpan);
             meta.appendChild(timeSpan);
@@ -245,7 +292,7 @@ def index():
                 container.style.alignSelf = "flex-end";
                 bubble.style.background = "#007aff";
                 bubble.style.color = "#fff";
-                meta.style.flexDirection = "row-reverse"; // Name/Time correct order for sent msg
+                meta.style.flexDirection = "row-reverse";
                 nameSpan.style.marginLeft = "8px";
                 timeSpan.style.marginRight = "0";
             } else {
@@ -341,7 +388,6 @@ def index():
 
         socket.on("connect", () => {
             document.querySelector('.header').style.color = '#000';
-            // Register username on connect
             const user = usernameInput.value || "Anon";
             socket.emit('register', user);
         });
@@ -354,11 +400,21 @@ def index():
 
         socket.on("message", (data) => addMessage(data));
 
-        // Update Online Count
+        // --- UPDATED: User List with Tooltip ---
         socket.on("user_list", (data) => {
+            // Update Count
             onlineStatus.innerText = `🟢 ${data.count} Online`;
             onlineStatus.style.color = "#4cd964";
-            // Optional: You could list names in a tooltip here using data.users
+            
+            // Clear and Repopulate Tooltip List
+            userListDisplay.innerHTML = '<div class="tooltip-header">Active Users</div>';
+            
+            data.users.forEach(user => {
+                const div = document.createElement("div");
+                div.className = "user-item";
+                div.innerText = "• " + user; // Bullet point for style
+                userListDisplay.appendChild(div);
+            });
         });
 
     </script>
@@ -370,36 +426,28 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    # Wait for register event to get username
     pass
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    # Remove user from tracking
     if request.sid in CONNECTED_USERS:
         del CONNECTED_USERS[request.sid]
     broadcast_user_list()
 
 @socketio.on('register')
 def handle_register(username):
-    # Link session ID to Username
     CONNECTED_USERS[request.sid] = username
     broadcast_user_list()
 
 @socketio.on('message')
 def handle_message(data):
-    # Update username in case they changed it in the UI
     CONNECTED_USERS[request.sid] = data['username']
-    
-    # Add Timestamp
     data['timestamp'] = datetime.now().strftime('%H:%M')
-    
     emit('message', data, broadcast=True)
-    broadcast_user_list() # Update list in case name changed
+    broadcast_user_list()
 
 def broadcast_user_list():
-    # Send count and list of unique names
-    users = list(set(CONNECTED_USERS.values())) # Unique names only
+    users = list(set(CONNECTED_USERS.values())) 
     emit('user_list', {'count': len(CONNECTED_USERS), 'users': users}, broadcast=True)
 
 if __name__ == '__main__':
