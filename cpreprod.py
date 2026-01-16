@@ -23,140 +23,263 @@ CONNECTED_USERS = {}
 def index():
     return render_template_string("""
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Team Chat</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LAN Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f2f2f7; display: flex; flex-direction: column; height: 100vh; }
-        
+        :root {
+            --primary: #2563eb;
+            --primary-gradient: linear-gradient(135deg, #2563eb, #1d4ed8);
+            --bg-color: #f3f4f6;
+            --chat-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-secondary: #6b7280;
+            --bubble-self: #2563eb;
+            --bubble-other: #ffffff;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        * { box-sizing: border-box; outline: none; }
+
+        body { 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            margin: 0; 
+            background-color: var(--bg-color); 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden;
+            color: var(--text-main);
+        }
+
+        /* --- Custom Scrollbar --- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+        ::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
+
+        /* --- Header --- */
         .header { 
-            background: #fff; 
-            padding: 15px; 
-            text-align: center; 
-            border-bottom: 1px solid #d1d1d6; 
-            font-weight: bold; 
-            font-size: 1.2rem; 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(12px);
+            padding: 15px 25px; 
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        .header-title { flex-grow: 1; text-align: center; }
-        
-        /* --- NEW: Online List Tooltip Styles --- */
-        .online-wrapper {
-            position: relative;
-            cursor: pointer;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
         }
         
-        .online-status { font-size: 0.9rem; color: #4cd964; font-weight: normal; }
-        
-        /* The hidden list that appears on hover */
+        .logo-area { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.1rem; color: #111; }
+        .logo-icon { font-size: 1.4rem; }
+
+        /* --- Online Status & Tooltip --- */
+        .online-wrapper { position: relative; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; transition: background 0.2s; }
+        .online-wrapper:hover { background: rgba(0,0,0,0.05); }
+        .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
+        .online-count { font-size: 0.9rem; font-weight: 500; color: #374151; }
+
         .user-tooltip {
             display: none;
             position: absolute;
             right: 0;
-            top: 100%;
-            margin-top: 10px;
+            top: 120%;
+            width: 200px;
             background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
-            min-width: 150px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            z-index: 1000;
-            text-align: left;
+            border-radius: 12px;
+            padding: 8px 0;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(0,0,0,0.05);
+            animation: fadeIn 0.2s ease-out;
+            z-index: 50;
         }
-        
-        /* Show tooltip when hovering over wrapper */
-        .online-wrapper:hover .user-tooltip {
-            display: block;
-        }
-        
-        .tooltip-header {
-            font-size: 0.8rem;
-            color: #888;
-            border-bottom: 1px solid #eee;
-            margin-bottom: 5px;
-            padding-bottom: 5px;
-        }
-        
-        .user-item {
-            font-size: 0.9rem;
-            padding: 3px 0;
-            color: #333;
-        }
-        /* --------------------------------------- */
-        
+        .online-wrapper:hover .user-tooltip { display: block; }
+        .tooltip-header { padding: 8px 16px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; font-weight: 600; border-bottom: 1px solid #f3f4f6; }
+        .user-item { padding: 8px 16px; font-size: 0.9rem; color: #4b5563; display: flex; align-items: center; gap: 8px; }
+        .user-item:hover { background: #f9fafb; color: #111; }
+        .user-item::before { content: ''; display: block; width: 6px; height: 6px; background: #10b981; border-radius: 50%; }
+
+        /* --- Chat Area --- */
         #messages { 
             flex: 1; 
-            overflow-y: scroll; 
-            padding: 20px; 
+            overflow-y: auto; 
+            padding: 20px 5%; 
             display: flex; 
             flex-direction: column; 
-            gap: 10px; 
+            gap: 16px; 
+            scroll-behavior: smooth;
         }
-        
-        .message-container { display: flex; flex-direction: column; max-width: 80%; }
-        .message-bubble { 
-            padding: 10px 15px; 
-            border-radius: 18px; 
-            background: #fff; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-            font-size: 16px;
-            color: #000;
-            line-height: 1.4;
-        }
-        
-        .message-meta { 
-            display: flex; 
-            align-items: center; 
-            margin-bottom: 2px; 
-            margin-left: 10px; 
-            font-size: 12px; 
-            color: #8e8e93; 
-        }
-        .timestamp { margin-left: 8px; opacity: 0.7; font-size: 11px; }
 
-        .system-message { align-self: center; font-size: 13px; color: #8e8e93; margin: 10px 0; background: transparent; box-shadow: none; }
+        .message-row { display: flex; flex-direction: column; max-width: 65%; width: fit-content; animation: slideUp 0.3s ease-out; }
+        .message-row.self { align-self: flex-end; align-items: flex-end; }
         
-        .input-area { 
-            padding: 20px; 
-            background: #fff; 
-            border-top: 1px solid #d1d1d6; 
-            display: flex; 
-            gap: 10px; 
-            flex-wrap: wrap;
+        .message-bubble { 
+            padding: 12px 18px; 
+            border-radius: 18px; 
+            font-size: 0.95rem; 
+            line-height: 1.5; 
+            position: relative;
+            box-shadow: var(--shadow-sm);
+            word-wrap: break-word;
         }
-        
-        #username { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 20%; min-width: 80px; }
-        #input { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; flex: 1; min-width: 200px; }
-        #imageUrl { padding: 10px; border: 1px solid #d1d1d6; border-radius: 10px; width: 30%; min-width: 150px; }
-        #imageFile { padding: 5px; border: 1px solid #d1d1d6; border-radius: 10px; width: 30%; min-width: 150px; }
-        #send { 
-            padding: 10px 20px; 
-            background: #007aff; 
+
+        /* Styling for "Other" messages */
+        .message-row.other .message-bubble { 
+            background: var(--bubble-other); 
+            color: var(--text-main); 
+            border-bottom-left-radius: 4px;
+        }
+
+        /* Styling for "My" messages */
+        .message-row.self .message-bubble { 
+            background: var(--primary-gradient); 
             color: white; 
-            border: none; 
-            border-radius: 10px; 
-            font-weight: bold; 
-            cursor: pointer; 
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
         }
-        #send:active { opacity: 0.8; }
-        
-        #volume-btn {
-            background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 0 10px;
+
+        .message-meta { 
+            font-size: 0.75rem; 
+            color: #9ca3af; 
+            margin-top: 4px; 
+            display: flex; 
+            gap: 8px; 
+            padding: 0 4px;
         }
+        .message-row.self .message-meta { justify-content: flex-end; }
+
+        .system-message { 
+            align-self: center; 
+            background: rgba(0,0,0,0.03); 
+            padding: 6px 16px; 
+            border-radius: 20px; 
+            font-size: 0.8rem; 
+            color: #6b7280; 
+            margin: 10px 0;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        /* Images in chat */
+        .chat-image { 
+            max-width: 100%; 
+            border-radius: 12px; 
+            display: block; 
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .chat-image:hover { transform: scale(1.02); }
+
+        /* --- Input Area --- */
+        .input-wrapper { 
+            padding: 20px; 
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+
+        .input-dock {
+            background: white;
+            width: 100%;
+            max-width: 900px;
+            border-radius: 24px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: var(--shadow-md);
+            border: 1px solid rgba(0,0,0,0.03);
+            transition: transform 0.2s;
+        }
+        .input-dock:focus-within { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+
+        .icon-btn {
+            background: #f3f4f6;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #4b5563;
+            transition: all 0.2s;
+        }
+        .icon-btn:hover { background: #e5e7eb; color: #111; }
+        .icon-btn:active { transform: scale(0.95); }
+
+        #username {
+            border: none;
+            background: #f9fafb;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            color: #374151;
+            width: 80px;
+            text-align: center;
+            font-size: 0.9rem;
+            cursor: text;
+        }
+        #username:focus { background: #eff6ff; color: var(--primary); }
+
+        #input {
+            flex: 1;
+            border: none;
+            padding: 10px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        #input::placeholder { color: #9ca3af; }
+
+        #send {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+        }
+        #send:hover { opacity: 0.9; transform: translateY(-1px); }
+        #send:active { transform: translateY(1px); }
+
+        /* Hidden inputs */
+        #imageUrl, #imageFile { display: none; }
+
+        /* Animations */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
     </style>
 </head>
 <body>
     <div class="header">
-        <button id="volume-btn" title="Toggle Sound">🔊</button>
-        <div class="header-title">🗪 LAN Chat (preprod)</div>
-        
+        <div class="logo-area">
+            <span class="logo-icon">町</span>
+            <span>LAN Chat</span>
+            <button class="icon-btn" id="volume-btn" title="Toggle Sound" style="width: 32px; height: 32px; font-size: 1rem; margin-left: 10px; background: transparent;">粕</button>
+        </div>
+
         <div class="online-wrapper">
-            <div class="online-status" id="onlineStatus">Loading...</div>
+            <div class="status-dot"></div>
+            <div class="online-count" id="onlineStatus">Loading...</div>
             <div class="user-tooltip" id="userListDisplay">
                 </div>
         </div>
@@ -164,13 +287,17 @@ def index():
     
     <div id="messages"></div>
     
-    <div class="input-area">
-        <input id="username" placeholder="Name" value="User">
-        <input id="input" placeholder="Type a message..." autocomplete="off">
-        <input id="imageUrl" placeholder="Image/GIF URL (optional)" autocomplete="off">
-        <input type="file" id="imageFile" accept="image/*" style="display: none;">
-        <button id="send">Send</button>
-        <button id="uploadBtn" title="Upload Image/GIF">📁</button>
+    <div class="input-wrapper">
+        <div class="input-dock">
+            <input id="username" title="Your Name" value="User">
+            
+            <button class="icon-btn" id="uploadBtn" title="Upload Image/GIF">梼</button>
+            <input type="file" id="imageFile" accept="image/*">
+            <input id="imageUrl"> 
+
+            <input id="input" placeholder="Type a message..." autocomplete="off">
+            <button id="send">Send</button>
+        </div>
     </div>
 
     <script>
@@ -179,7 +306,6 @@ def index():
         const messages = document.getElementById("messages");
         const input = document.getElementById("input");
         const usernameInput = document.getElementById("username");
-        const imageUrlInput = document.getElementById("imageUrl");
         const imageFileInput = document.getElementById("imageFile");
         const uploadBtn = document.getElementById("uploadBtn");
         const volumeBtn = document.getElementById("volume-btn");
@@ -196,7 +322,7 @@ def index():
             usernameInput.value = localStorage.getItem('chat_username');
         }
 
-        // --- Notification Logic ---
+        // --- Notifications ---
         document.body.addEventListener('click', () => {
             if (Notification.permission === 'default') Notification.requestPermission();
         }, { once: true });
@@ -227,86 +353,88 @@ def index():
 
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
-            volumeBtn.innerText = soundEnabled ? "🔊" : "🔇";
+            volumeBtn.innerText = soundEnabled ? "粕" : "舶";
+            volumeBtn.style.color = soundEnabled ? "#4b5563" : "#ef4444";
         });
 
-        // --- Chat Logic ---
+        // --- Chat UI Logic ---
 
         function scrollToBottom() {
             messages.scrollTop = messages.scrollHeight;
         }
 
         function addMessage(data) {
-            const container = document.createElement("div");
-            container.className = "message-container";
+            const isMe = data.username === usernameInput.value;
             
+            // System Messages
             if (data.type === 'system') {
-                container.classList.add("system-message");
-                container.innerText = data.msg;
-                messages.appendChild(container);
+                const sysDiv = document.createElement("div");
+                sysDiv.className = "system-message";
+                sysDiv.innerText = data.msg;
+                messages.appendChild(sysDiv);
                 scrollToBottom();
                 return;
             }
 
+            // Notify
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
-            const meta = document.createElement("div");
-            meta.className = "message-meta";
-            
-            const nameSpan = document.createElement("span");
-            nameSpan.innerText = data.username;
-            nameSpan.style.fontWeight = "bold";
-            
-            const timeSpan = document.createElement("span");
-            timeSpan.className = "timestamp";
-            timeSpan.innerText = data.timestamp || ""; 
-            
-            meta.appendChild(nameSpan);
-            meta.appendChild(timeSpan);
+            // Container Row
+            const row = document.createElement("div");
+            row.className = `message-row ${isMe ? 'self' : 'other'}`;
 
+            // Bubble
             const bubble = document.createElement("div");
             bubble.className = "message-bubble";
-            
+
             if (data.type === 'image') {
                 const img = document.createElement("img");
                 img.src = data.url;
-                img.style.maxWidth = "300px";
-                img.style.maxHeight = "300px";
-                img.style.borderRadius = "10px";
+                img.className = "chat-image";
+                img.onclick = () => window.open(data.url, '_blank');
                 bubble.appendChild(img);
                 if (data.msg) {
                     const caption = document.createElement("div");
                     caption.innerText = data.msg;
-                    caption.style.marginTop = "5px";
+                    caption.style.marginTop = "8px";
                     bubble.appendChild(caption);
                 }
             } else {
                 bubble.innerText = data.msg;
             }
+
+            // Meta (Name + Time)
+            const meta = document.createElement("div");
+            meta.className = "message-meta";
             
-            container.appendChild(meta);
-            container.appendChild(bubble);
+            const nameSpan = document.createElement("span");
+            nameSpan.innerText = isMe ? "You" : data.username;
+            nameSpan.style.fontWeight = "600";
             
-            if (data.username === usernameInput.value) {
-                container.style.alignSelf = "flex-end";
-                bubble.style.background = "#007aff";
-                bubble.style.color = "#fff";
-                meta.style.flexDirection = "row-reverse";
-                nameSpan.style.marginLeft = "8px";
-                timeSpan.style.marginRight = "0";
+            const timeSpan = document.createElement("span");
+            timeSpan.innerText = data.timestamp || "";
+            
+            // Order depends on sender for aesthetics
+            if (isMe) {
+                meta.appendChild(timeSpan);
+                meta.appendChild(nameSpan);
             } else {
-                container.style.alignSelf = "flex-start";
+                meta.appendChild(nameSpan);
+                meta.appendChild(timeSpan);
             }
-            
-            messages.appendChild(container);
+
+            row.appendChild(bubble);
+            row.appendChild(meta);
+            messages.appendChild(row);
             scrollToBottom();
         }
 
         function sendMessage() {
             const msg = input.value.trim();
             const user = usernameInput.value.trim() || "Anon";
-            const imageUrl = imageUrlInput.value.trim();
+            // Check hidden image url input in case someone pasted a raw link manually
+            const imageUrl = document.getElementById('imageUrl').value.trim(); 
             
             if (msg || imageUrl) {
                 localStorage.setItem('chat_username', user);
@@ -321,10 +449,12 @@ def index():
                 }
                 socket.emit("message", data);
                 input.value = "";
-                imageUrlInput.value = "";
+                document.getElementById('imageUrl').value = "";
                 input.focus();
             }
         }
+
+        // --- Inputs & Uploads ---
 
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
         document.getElementById("send").addEventListener("click", sendMessage);
@@ -335,6 +465,8 @@ def index():
             if (file) handleFile(file);
             imageFileInput.value = ''; 
         });
+
+        // --- PASTE / DROP HANDLERS (Keep this logic!) ---
 
         function handleMediaInput(e, dataTransfer) {
             const html = dataTransfer.getData('text/html');
@@ -387,32 +519,25 @@ def index():
         // --- Socket Events ---
 
         socket.on("connect", () => {
-            document.querySelector('.header').style.color = '#000';
             const user = usernameInput.value || "Anon";
             socket.emit('register', user);
         });
 
         socket.on("disconnect", () => {
-            document.querySelector('.header').style.color = 'red';
             onlineStatus.innerText = "Offline";
-            onlineStatus.style.color = "red";
+            onlineStatus.style.color = "#ef4444";
         });
 
         socket.on("message", (data) => addMessage(data));
 
-        // --- UPDATED: User List with Tooltip ---
         socket.on("user_list", (data) => {
-            // Update Count
-            onlineStatus.innerText = `🟢 ${data.count} Online`;
-            onlineStatus.style.color = "#4cd964";
+            onlineStatus.innerText = `${data.count} Online`;
             
-            // Clear and Repopulate Tooltip List
             userListDisplay.innerHTML = '<div class="tooltip-header">Active Users</div>';
-            
             data.users.forEach(user => {
                 const div = document.createElement("div");
                 div.className = "user-item";
-                div.innerText = "• " + user; // Bullet point for style
+                div.innerText = user;
                 userListDisplay.appendChild(div);
             });
         });
