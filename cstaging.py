@@ -115,36 +115,27 @@ def index():
 
         // --- Notification Logic ---
         
-        // 1. Request Browser Permission on click
         document.body.addEventListener('click', () => {
             if (Notification.permission === 'default') {
                 Notification.requestPermission();
             }
         }, { once: true });
 
-        // 2. Handle Window Focus (Clear notifications)
         window.addEventListener('focus', () => {
             unreadCount = 0;
             document.title = originalTitle;
         });
 
         function notifyUser(sender, msg) {
-            // Only notify if window is hidden or it's not me
             if (document.hidden || sender !== usernameInput.value) {
-                
-                // Sound
                 if (soundEnabled) {
                     audio.currentTime = 0;
                     audio.play().catch(e => console.log("Audio blocked until interaction"));
                 }
-
-                // Title Flashing
                 if (document.hidden) {
                     unreadCount++;
                     document.title = `(${unreadCount}) New Message!`;
                 }
-                
-                // Desktop Notification
                 if (document.hidden && Notification.permission === "granted") {
                     new Notification(`New message from ${sender}`, {
                         body: msg,
@@ -154,34 +145,9 @@ def index():
             }
         }
 
-        // Toggle Sound
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
             volumeBtn.innerText = soundEnabled ? "粕" : "舶";
-        });
-
-        // Upload Image/GIF
-        uploadBtn.addEventListener('click', () => {
-            imageFileInput.click();
-        });
-
-        imageFileInput.addEventListener('change', () => {
-            const file = imageFileInput.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const user = usernameInput.value.trim() || "Anon";
-                    localStorage.setItem('chat_username', user);
-                    socket.emit("message", {
-                        username: user,
-                        type: 'image',
-                        url: reader.result,
-                        msg: ''
-                    });
-                };
-                reader.readAsDataURL(file);
-            }
-            imageFileInput.value = ''; // Clear for next upload
         });
 
         // --- Chat Logic ---
@@ -202,7 +168,6 @@ def index():
                 return;
             }
 
-            // NOTIFY USER HERE
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
@@ -258,7 +223,7 @@ def index():
                 if (imageUrl) {
                     data.type = 'image';
                     data.url = imageUrl;
-                    data.msg = msg; // optional caption
+                    data.msg = msg; 
                 } else {
                     data.type = 'text';
                     data.msg = msg;
@@ -270,82 +235,88 @@ def index():
             }
         }
 
+        // --- INPUT HANDLERS ---
+
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
+        document.getElementById("send").addEventListener("click", sendMessage);
+
+        uploadBtn.addEventListener('click', () => imageFileInput.click());
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (file) handleFile(file);
+            imageFileInput.value = ''; 
+        });
+
+        // --- GLOBAL PASTE / DROP HANDLER ---
+        // We attach to 'document' to catch events even if the input loses focus (common with Emoji Pickers)
         
-        // --- IMPROVED PASTE HANDLER ---
-        input.addEventListener('paste', (e) => {
-            // 1. Try to get content from HTML (Fixes the "Static GIF" issue)
-            const html = e.clipboardData.getData('text/html');
+        function handleMediaInput(e, dataTransfer) {
+            // 1. Try HTML (Browser GIFs)
+            const html = dataTransfer.getData('text/html');
             if (html) {
                 const doc = new DOMParser().parseFromString(html, 'text/html');
                 const img = doc.querySelector('img');
                 if (img && img.src) {
                     e.preventDefault();
-                    const user = usernameInput.value.trim() || "Anon";
-                    localStorage.setItem('chat_username', user);
-                    
-                    // Send the URL found in the HTML (Animation preserved!)
-                    socket.emit("message", {
-                        username: user,
-                        type: 'image',
-                        url: img.src,
-                        msg: '' 
-                    });
-                    return;
+                    sendImage(img.src);
+                    return true;
                 }
             }
 
-            // 2. Try to get Files (Fixes Windows Emoji Picker & Local Screenshots)
-            const files = e.clipboardData.files;
-            if (files.length > 0) {
+            // 2. Try Files (Windows Emoji Picker / Local Uploads)
+            const files = dataTransfer.files;
+            if (files && files.length > 0) {
                 for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    if (file.type.startsWith('image/')) {
+                    if (files[i].type.startsWith('image/')) {
                         e.preventDefault();
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const user = usernameInput.value.trim() || "Anon";
-                            localStorage.setItem('chat_username', user);
-                            socket.emit("message", {
-                                username: user,
-                                type: 'image',
-                                url: reader.result,
-                                msg: ''
-                            });
-                        };
-                        reader.readAsDataURL(file);
-                        return; // Stop after first image
+                        handleFile(files[i]);
+                        return true; 
                     }
                 }
-            } 
+            }
+            return false;
+        }
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = () => sendImage(reader.result);
+            reader.readAsDataURL(file);
+        }
+
+        function sendImage(url) {
+            const user = usernameInput.value.trim() || "Anon";
+            localStorage.setItem('chat_username', user);
+            socket.emit("message", {
+                username: user,
+                type: 'image',
+                url: url,
+                msg: ''
+            });
+        }
+
+        // Global Paste
+        document.addEventListener('paste', (e) => {
+            // If the user is pasting into the text input, we handle media but let text pass through
+            // If they are not in the input (focus lost), we try to catch media anyway
+            const handled = handleMediaInput(e, e.clipboardData);
             
-            // 3. Try to get Text (Direct URL pasting)
-            const text = e.clipboardData.getData('text').trim();
-            if (text && isImageUrl(text)) {
-                if (text.startsWith('file://')) {
-                    e.preventDefault();
-                    alert('Local files cannot be shared by path. Please use the upload button (梼).');
-                    return;
-                }
-                e.preventDefault();
-                const user = usernameInput.value.trim() || "Anon";
-                localStorage.setItem('chat_username', user);
-                socket.emit("message", {
-                    username: user,
-                    type: 'image',
-                    url: text,
-                    msg: ''
-                });
+            // If it wasn't media, and we aren't in the input box, maybe focus the input?
+            if (!handled && document.activeElement !== input) {
+               // Optional: If they paste text while not focused, focus input? 
+               // keeping it simple for now to avoid interfering with other interactions.
             }
         });
-        
-        // Robust URL checker
-        function isImageUrl(url) {
-            return (url.match(/^http[^\?]*.(jpg|jpeg|gif|png|tiff|bmp|webp)(\?(.*))?$/i) !== null);
-        }
-        
-        document.getElementById("send").addEventListener("click", sendMessage);
-        
+
+        // Global Drag/Drop (Stops browser from opening file in new tab)
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault(); // Essential to allow 'drop' to fire
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault(); // Essential to stop browser redirection
+            handleMediaInput(e, e.dataTransfer);
+        });
+
         socket.on("connect", () => {
             document.querySelector('.header').style.color = '#000';
         });
@@ -363,5 +334,5 @@ def handle_message(data):
     emit('message', data, broadcast=True)
 
 if __name__ == '__main__':
-    print("[*] Server running on http://0.0.0.0:8081")
-    socketio.run(app, host='0.0.0.0', port=8081, debug=False)
+    print("[*] Server running on http://0.0.0.0:8080")
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
