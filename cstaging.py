@@ -110,8 +110,8 @@ def index():
 </head>
 <body>
     <div class="header">
-        <button id="volume-btn" title="Toggle Sound">粕</button>
-        <div class="header-title">町 LAN Chat</div>
+        <button id="volume-btn" title="Toggle Sound">🔊</button>
+        <div class="header-title">🗪 LAN Chat 🖧</div>
         <div class="online-status" id="onlineStatus">Loading...</div>
     </div>
     
@@ -123,7 +123,7 @@ def index():
         <input id="imageUrl" placeholder="Image/GIF URL (optional)" autocomplete="off">
         <input type="file" id="imageFile" accept="image/*" style="display: none;">
         <button id="send">Send</button>
-        <button id="uploadBtn" title="Upload Image/GIF">梼</button>
+        <button id="uploadBtn" title="Upload Image/GIF">📎</button>
     </div>
 
     <script>
