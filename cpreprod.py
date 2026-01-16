@@ -344,5 +344,5 @@ def handle_message(data):
     emit('message', data, broadcast=True)
 
 if __name__ == '__main__':
-    print("[*] Server running on http://0.0.0.0:8081")
-    socketio.run(app, host='0.0.0.0', port=8081, debug=False)
+    print("[*] Server running on http://0.0.0.0:8080")
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
