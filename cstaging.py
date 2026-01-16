@@ -1,6 +1,7 @@
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit
 import eventlet
+from datetime import datetime
 
 # Standard eventlet patch for stability
 eventlet.monkey_patch()
@@ -8,12 +9,15 @@ eventlet.monkey_patch()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secure_chat_key'
 
-# FIX: Added max_http_buffer_size to allow large GIFs (10MB limit)
+# Max buffer size set to 10MB to allow large GIFs
 socketio = SocketIO(app, 
                     cors_allowed_origins="*", 
                     async_mode='eventlet', 
                     ping_timeout=60, 
-                    max_http_buffer_size=10 * 1024 * 1024) 
+                    max_http_buffer_size=10 * 1024 * 1024)
+
+# Global dictionary to track connected users: {session_id: username}
+CONNECTED_USERS = {}
 
 @app.route('/')
 def index():
@@ -26,7 +30,21 @@ def index():
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f2f2f7; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #d1d1d6; font-weight: bold; font-size: 1.2rem; transition: color 0.3s; }
+        
+        /* Updated Header to show Online Count */
+        .header { 
+            background: #fff; 
+            padding: 15px; 
+            text-align: center; 
+            border-bottom: 1px solid #d1d1d6; 
+            font-weight: bold; 
+            font-size: 1.2rem; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title { flex-grow: 1; text-align: center; }
+        .online-status { font-size: 0.9rem; color: #4cd964; font-weight: normal; }
         
         #messages { 
             flex: 1; 
@@ -47,7 +65,18 @@ def index():
             color: #000;
             line-height: 1.4;
         }
-        .sender-name { font-size: 12px; color: #8e8e93; margin-bottom: 2px; margin-left: 10px; }
+        
+        /* Meta info line (Name + Time) */
+        .message-meta { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 2px; 
+            margin-left: 10px; 
+            font-size: 12px; 
+            color: #8e8e93; 
+        }
+        .timestamp { margin-left: 8px; opacity: 0.7; font-size: 11px; }
+
         .system-message { align-self: center; font-size: 13px; color: #8e8e93; margin: 10px 0; background: transparent; box-shadow: none; }
         
         .input-area { 
@@ -74,7 +103,6 @@ def index():
         }
         #send:active { opacity: 0.8; }
         
-        /* Volume Toggle Button */
         #volume-btn {
             background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 0 10px;
         }
@@ -82,10 +110,13 @@ def index():
 </head>
 <body>
     <div class="header">
-        町 LAN Team Chat 
         <button id="volume-btn" title="Toggle Sound">粕</button>
+        <div class="header-title">町 LAN Chat</div>
+        <div class="online-status" id="onlineStatus">Loading...</div>
     </div>
+    
     <div id="messages"></div>
+    
     <div class="input-area">
         <input id="username" placeholder="Name" value="User">
         <input id="input" placeholder="Type a message..." autocomplete="off">
@@ -105,26 +136,21 @@ def index():
         const imageFileInput = document.getElementById("imageFile");
         const uploadBtn = document.getElementById("uploadBtn");
         const volumeBtn = document.getElementById("volume-btn");
+        const onlineStatus = document.getElementById("onlineStatus");
         
         let soundEnabled = true;
         let unreadCount = 0;
         const originalTitle = document.title;
-        
-        // Base64 short beep sound
         const beepUrl = "https://www.myinstants.com/media/sounds/discord-notification.mp3"; 
         const audio = new Audio(beepUrl);
 
-        // Restore username
         if(localStorage.getItem('chat_username')) {
             usernameInput.value = localStorage.getItem('chat_username');
         }
 
         // --- Notification Logic ---
-        
         document.body.addEventListener('click', () => {
-            if (Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
+            if (Notification.permission === 'default') Notification.requestPermission();
         }, { once: true });
 
         window.addEventListener('focus', () => {
@@ -177,10 +203,21 @@ def index():
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
-            const name = document.createElement("div");
-            name.className = "sender-name";
-            name.innerText = data.username;
+            // Updated Metadata (Name + Timestamp)
+            const meta = document.createElement("div");
+            meta.className = "message-meta";
             
+            const nameSpan = document.createElement("span");
+            nameSpan.innerText = data.username;
+            nameSpan.style.fontWeight = "bold";
+            
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "timestamp";
+            timeSpan.innerText = data.timestamp || ""; // Display Timestamp
+            
+            meta.appendChild(nameSpan);
+            meta.appendChild(timeSpan);
+
             const bubble = document.createElement("div");
             bubble.className = "message-bubble";
             
@@ -201,15 +238,16 @@ def index():
                 bubble.innerText = data.msg;
             }
             
-            container.appendChild(name);
+            container.appendChild(meta);
             container.appendChild(bubble);
             
             if (data.username === usernameInput.value) {
                 container.style.alignSelf = "flex-end";
                 bubble.style.background = "#007aff";
                 bubble.style.color = "#fff";
-                name.style.textAlign = "right";
-                name.style.marginRight = "10px";
+                meta.style.flexDirection = "row-reverse"; // Name/Time correct order for sent msg
+                nameSpan.style.marginLeft = "8px";
+                timeSpan.style.marginRight = "0";
             } else {
                 container.style.alignSelf = "flex-start";
             }
@@ -241,8 +279,6 @@ def index():
             }
         }
 
-        // --- INPUT HANDLERS ---
-
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
         document.getElementById("send").addEventListener("click", sendMessage);
 
@@ -253,11 +289,7 @@ def index():
             imageFileInput.value = ''; 
         });
 
-        // --- GLOBAL PASTE / DROP HANDLER ---
-        // Handles Windows Emoji Picker (Win+.) and standard files
-        
         function handleMediaInput(e, dataTransfer) {
-            // 1. Try HTML (Browser GIFs - preserves animation)
             const html = dataTransfer.getData('text/html');
             if (html) {
                 const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -268,12 +300,9 @@ def index():
                     return true;
                 }
             }
-
-            // 2. Try Files (Windows Emoji Picker / Drag & Drop)
             const files = dataTransfer.files;
             if (files && files.length > 0) {
                 for (let i = 0; i < files.length; i++) {
-                    // Check if it's an image
                     if (files[i].type.startsWith('image/')) {
                         e.preventDefault();
                         handleFile(files[i]);
@@ -301,39 +330,77 @@ def index():
             });
         }
 
-        // Global Paste Listener (Works even if input isn't focused)
-        document.addEventListener('paste', (e) => {
-            handleMediaInput(e, e.clipboardData);
-        });
-
-        // Global Drag Over (Stops browser from opening file)
-        document.addEventListener('dragover', (e) => {
-            e.preventDefault(); 
-        });
-
-        // Global Drop (Stops browser from opening file)
+        document.addEventListener('paste', (e) => handleMediaInput(e, e.clipboardData));
+        document.addEventListener('dragover', (e) => e.preventDefault());
         document.addEventListener('drop', (e) => {
             e.preventDefault(); 
             handleMediaInput(e, e.dataTransfer);
         });
 
+        // --- Socket Events ---
+
         socket.on("connect", () => {
             document.querySelector('.header').style.color = '#000';
-            console.log("Connected");
+            // Register username on connect
+            const user = usernameInput.value || "Anon";
+            socket.emit('register', user);
         });
+
         socket.on("disconnect", () => {
             document.querySelector('.header').style.color = 'red';
-            console.log("Disconnected - Packet likely too large or server restart");
+            onlineStatus.innerText = "Offline";
+            onlineStatus.style.color = "red";
         });
+
         socket.on("message", (data) => addMessage(data));
+
+        // Update Online Count
+        socket.on("user_list", (data) => {
+            onlineStatus.innerText = `🟢 ${data.count} Online`;
+            onlineStatus.style.color = "#4cd964";
+            // Optional: You could list names in a tooltip here using data.users
+        });
+
     </script>
 </body>
 </html>
     """)
 
+# --- SocketIO Handlers ---
+
+@socketio.on('connect')
+def handle_connect():
+    # Wait for register event to get username
+    pass
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    # Remove user from tracking
+    if request.sid in CONNECTED_USERS:
+        del CONNECTED_USERS[request.sid]
+    broadcast_user_list()
+
+@socketio.on('register')
+def handle_register(username):
+    # Link session ID to Username
+    CONNECTED_USERS[request.sid] = username
+    broadcast_user_list()
+
 @socketio.on('message')
 def handle_message(data):
+    # Update username in case they changed it in the UI
+    CONNECTED_USERS[request.sid] = data['username']
+    
+    # Add Timestamp
+    data['timestamp'] = datetime.now().strftime('%H:%M')
+    
     emit('message', data, broadcast=True)
+    broadcast_user_list() # Update list in case name changed
+
+def broadcast_user_list():
+    # Send count and list of unique names
+    users = list(set(CONNECTED_USERS.values())) # Unique names only
+    emit('user_list', {'count': len(CONNECTED_USERS), 'users': users}, broadcast=True)
 
 if __name__ == '__main__':
     print("[*] Server running on http://0.0.0.0:8081")
