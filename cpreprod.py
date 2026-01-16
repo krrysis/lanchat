@@ -336,7 +336,7 @@ def index():
 <body>
     <div class="header">
         <div class="logo-area">
-            <span class="logo-icon">町</span>
+            <span class="logo-icon">☣️</span>
             <span>LAN Chat</span>
         </div>
 
@@ -347,7 +347,7 @@ def index():
                 <div class="user-tooltip" id="userListDisplay"></div>
             </div>
 
-            <button class="icon-btn" id="settings-btn" title="Settings" style="background: transparent;">撲</button>
+            <button class="icon-btn" id="settings-btn" title="Settings" style="background: transparent;">🎨</button>
         </div>
     </div>
     
@@ -356,7 +356,7 @@ def index():
     <div class="input-wrapper">
         <div class="input-dock">
             <input id="username" title="Your Name" value="User">
-            <button class="icon-btn" id="uploadBtn" title="Upload Image/GIF">梼</button>
+            <button class="icon-btn" id="uploadBtn" title="Upload Image/GIF">📁</button>
             <input type="file" id="imageFile" accept="image/*">
             <input id="imageUrl"> 
             <input id="input" placeholder="Type a message..." autocomplete="off">
