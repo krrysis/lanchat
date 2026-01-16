@@ -179,7 +179,7 @@ def index():
 
         volumeBtn.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
-            volumeBtn.innerText = soundEnabled ? "粕" : "舶";
+            volumeBtn.innerText = soundEnabled ? "🔔" : "🔇";
         });
 
         // --- Chat Logic ---
