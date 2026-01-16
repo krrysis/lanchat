@@ -31,17 +31,39 @@ def index():
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     
     <style>
+        /* --- THEME VARIABLES --- */
         :root {
-            --primary: #2563eb;
-            --primary-gradient: linear-gradient(135deg, #2563eb, #1d4ed8);
+            /* Default: Blue */
+            --primary: #2563eb; 
+            --primary-light: #3b82f6;
+            
+            /* Light Mode Defaults */
             --bg-color: #f3f4f6;
             --chat-bg: #ffffff;
             --text-main: #1f2937;
             --text-secondary: #6b7280;
-            --bubble-self: #2563eb;
-            --bubble-other: #ffffff;
+            --bubble-other-bg: #ffffff;
+            --bubble-other-text: #1f2937;
+            --input-bg: #ffffff;
+            --input-border: rgba(0,0,0,0.05);
+            --header-bg: rgba(255, 255, 255, 0.85);
             --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Dark Mode Overrides */
+        [data-theme="dark"] {
+            --bg-color: #111827;
+            --chat-bg: #1f2937;
+            --text-main: #f9fafb;
+            --text-secondary: #9ca3af;
+            --bubble-other-bg: #374151;
+            --bubble-other-text: #f3f4f6;
+            --input-bg: #1f2937;
+            --input-border: rgba(255,255,255,0.1);
+            --header-bg: rgba(17, 24, 39, 0.85);
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
         }
 
         * { box-sizing: border-box; outline: none; }
@@ -55,37 +77,40 @@ def index():
             height: 100vh; 
             overflow: hidden;
             color: var(--text-main);
+            transition: background-color 0.3s, color 0.3s;
         }
 
-        /* --- Custom Scrollbar --- */
+        /* --- Scrollbar --- */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
-        ::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
-
+        ::-webkit-scrollbar-thumb { background-color: var(--text-secondary); opacity: 0.5; border-radius: 20px; }
+        
         /* --- Header --- */
         .header { 
-            background: rgba(255, 255, 255, 0.85); 
+            background: var(--header-bg); 
             backdrop-filter: blur(12px);
             padding: 15px 25px; 
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            border-bottom: 1px solid var(--input-border);
             position: sticky;
             top: 0;
             z-index: 100;
             box-shadow: var(--shadow-sm);
+            transition: background 0.3s;
         }
         
-        .logo-area { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.1rem; color: #111; }
+        .logo-area { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.1rem; }
         .logo-icon { font-size: 1.4rem; }
 
-        /* --- Online Status & Tooltip --- */
+        .header-controls { display: flex; align-items: center; gap: 10px; }
+
+        /* --- Online Status --- */
         .online-wrapper { position: relative; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; transition: background 0.2s; }
-        .online-wrapper:hover { background: rgba(0,0,0,0.05); }
+        .online-wrapper:hover { background: rgba(128,128,128,0.1); }
         .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
-        .online-count { font-size: 0.9rem; font-weight: 500; color: #374151; }
+        .online-count { font-size: 0.9rem; font-weight: 500; }
 
         .user-tooltip {
             display: none;
@@ -93,18 +118,18 @@ def index():
             right: 0;
             top: 120%;
             width: 200px;
-            background: white;
+            background: var(--input-bg);
             border-radius: 12px;
             padding: 8px 0;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--input-border);
             animation: fadeIn 0.2s ease-out;
             z-index: 50;
+            color: var(--text-main);
         }
         .online-wrapper:hover .user-tooltip { display: block; }
-        .tooltip-header { padding: 8px 16px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; font-weight: 600; border-bottom: 1px solid #f3f4f6; }
-        .user-item { padding: 8px 16px; font-size: 0.9rem; color: #4b5563; display: flex; align-items: center; gap: 8px; }
-        .user-item:hover { background: #f9fafb; color: #111; }
+        .tooltip-header { padding: 8px 16px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--input-border); }
+        .user-item { padding: 8px 16px; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
         .user-item::before { content: ''; display: block; width: 6px; height: 6px; background: #10b981; border-radius: 50%; }
 
         /* --- Chat Area --- */
@@ -131,44 +156,40 @@ def index():
             word-wrap: break-word;
         }
 
-        /* Styling for "Other" messages */
         .message-row.other .message-bubble { 
-            background: var(--bubble-other); 
-            color: var(--text-main); 
+            background: var(--bubble-other-bg); 
+            color: var(--bubble-other-text); 
             border-bottom-left-radius: 4px;
         }
 
-        /* Styling for "My" messages */
         .message-row.self .message-bubble { 
-            background: var(--primary-gradient); 
+            background: var(--primary); 
             color: white; 
             border-bottom-right-radius: 4px;
-            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0, 0.2);
         }
 
         .message-meta { 
             font-size: 0.75rem; 
-            color: #9ca3af; 
+            color: var(--text-secondary); 
             margin-top: 4px; 
             display: flex; 
             gap: 8px; 
             padding: 0 4px;
         }
-        .message-row.self .message-meta { justify-content: flex-end; }
 
         .system-message { 
             align-self: center; 
-            background: rgba(0,0,0,0.03); 
+            background: rgba(128,128,128,0.1); 
             padding: 6px 16px; 
             border-radius: 20px; 
             font-size: 0.8rem; 
-            color: #6b7280; 
+            color: var(--text-secondary); 
             margin: 10px 0;
             max-width: 90%;
             text-align: center;
         }
 
-        /* Images in chat */
         .chat-image { 
             max-width: 100%; 
             border-radius: 12px; 
@@ -185,11 +206,10 @@ def index():
             background: transparent;
             display: flex;
             justify-content: center;
-            position: relative;
         }
 
         .input-dock {
-            background: white;
+            background: var(--input-bg);
             width: 100%;
             max-width: 900px;
             border-radius: 24px;
@@ -198,13 +218,13 @@ def index():
             align-items: center;
             gap: 10px;
             box-shadow: var(--shadow-md);
-            border: 1px solid rgba(0,0,0,0.03);
-            transition: transform 0.2s;
+            border: 1px solid var(--input-border);
+            transition: transform 0.2s, background 0.3s;
         }
-        .input-dock:focus-within { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .input-dock:focus-within { transform: translateY(-2px); }
 
         .icon-btn {
-            background: #f3f4f6;
+            background: rgba(128,128,128,0.1);
             border: none;
             width: 40px;
             height: 40px;
@@ -214,25 +234,24 @@ def index():
             align-items: center;
             justify-content: center;
             font-size: 1.2rem;
-            color: #4b5563;
+            color: var(--text-secondary);
             transition: all 0.2s;
         }
-        .icon-btn:hover { background: #e5e7eb; color: #111; }
+        .icon-btn:hover { background: rgba(128,128,128,0.2); color: var(--text-main); }
         .icon-btn:active { transform: scale(0.95); }
 
         #username {
             border: none;
-            background: #f9fafb;
+            background: rgba(128,128,128,0.05);
             padding: 8px 12px;
             border-radius: 12px;
             font-weight: 600;
-            color: #374151;
+            color: var(--text-main);
             width: 80px;
             text-align: center;
             font-size: 0.9rem;
-            cursor: text;
         }
-        #username:focus { background: #eff6ff; color: var(--primary); }
+        #username:focus { background: rgba(128,128,128,0.1); color: var(--primary); }
 
         #input {
             flex: 1;
@@ -240,11 +259,13 @@ def index():
             padding: 10px;
             font-size: 1rem;
             font-family: inherit;
+            background: transparent;
+            color: var(--text-main);
         }
-        #input::placeholder { color: #9ca3af; }
+        #input::placeholder { color: var(--text-secondary); }
 
         #send {
-            background: var(--primary-gradient);
+            background: var(--primary);
             color: white;
             border: none;
             padding: 10px 20px;
@@ -252,19 +273,62 @@ def index():
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
         }
         #send:hover { opacity: 0.9; transform: translateY(-1px); }
-        #send:active { transform: translateY(1px); }
 
-        /* Hidden inputs */
-        #imageUrl, #imageFile { display: none; }
-
-        /* Animations */
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* --- Settings Modal --- */
+        .modal-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
         }
+        .modal {
+            background: var(--input-bg);
+            color: var(--text-main);
+            padding: 25px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.2s;
+        }
+        .modal h2 { margin-top: 0; font-size: 1.2rem; }
+        .setting-row { margin-bottom: 20px; }
+        .setting-label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); }
+        
+        /* Color Picker Grid */
+        .color-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+        .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s; }
+        .color-option:hover { transform: scale(1.1); }
+        .color-option.selected { border-color: var(--text-main); }
+
+        /* Switch Toggle */
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px; transition: .4s; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; border-radius: 50%; transition: .4s; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        .modal-close {
+            margin-top: 10px;
+            width: 100%;
+            padding: 10px;
+            border: none;
+            background: rgba(128,128,128,0.1);
+            color: var(--text-main);
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .modal-close:hover { background: rgba(128,128,128,0.2); }
+
+        #imageUrl, #imageFile { display: none; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     </style>
@@ -274,14 +338,16 @@ def index():
         <div class="logo-area">
             <span class="logo-icon">町</span>
             <span>LAN Chat</span>
-            <button class="icon-btn" id="volume-btn" title="Toggle Sound" style="width: 32px; height: 32px; font-size: 1rem; margin-left: 10px; background: transparent;">粕</button>
         </div>
 
-        <div class="online-wrapper">
-            <div class="status-dot"></div>
-            <div class="online-count" id="onlineStatus">Loading...</div>
-            <div class="user-tooltip" id="userListDisplay">
-                </div>
+        <div class="header-controls">
+            <div class="online-wrapper">
+                <div class="status-dot"></div>
+                <div class="online-count" id="onlineStatus">Loading...</div>
+                <div class="user-tooltip" id="userListDisplay"></div>
+            </div>
+
+            <button class="icon-btn" id="settings-btn" title="Settings" style="background: transparent;">撲</button>
         </div>
     </div>
     
@@ -290,29 +356,127 @@ def index():
     <div class="input-wrapper">
         <div class="input-dock">
             <input id="username" title="Your Name" value="User">
-            
             <button class="icon-btn" id="uploadBtn" title="Upload Image/GIF">梼</button>
             <input type="file" id="imageFile" accept="image/*">
             <input id="imageUrl"> 
-
             <input id="input" placeholder="Type a message..." autocomplete="off">
             <button id="send">Send</button>
         </div>
     </div>
 
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h2>Appearance Settings</h2>
+            
+            <div class="setting-row">
+                <span class="setting-label">Accent Color</span>
+                <div class="color-grid" id="colorGrid">
+                    </div>
+            </div>
+
+            <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label" style="margin: 0;">Dark Mode</span>
+                <label class="switch">
+                    <input type="checkbox" id="darkModeToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center;">
+                 <span class="setting-label" style="margin: 0;">Sound Effects</span>
+                 <label class="switch">
+                    <input type="checkbox" id="soundToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <button class="modal-close" id="closeSettings">Done</button>
+        </div>
+    </div>
+
     <script>
         const socket = io({ reconnection: true });
+        
+        // --- THEME LOGIC ---
+        const colors = [
+            '#2563eb', // Blue
+            '#9333ea', // Purple
+            '#16a34a', // Green
+            '#ea580c', // Orange
+            '#db2777', // Pink
+            '#0d9488'  // Teal
+        ];
 
+        const root = document.documentElement;
+        const colorGrid = document.getElementById('colorGrid');
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        
+        // Load Saved Settings
+        const savedColor = localStorage.getItem('theme_color') || '#2563eb';
+        const savedTheme = localStorage.getItem('theme_mode') || 'light';
+        const savedSound = localStorage.getItem('sound_enabled');
+
+        // Apply Initial State
+        root.style.setProperty('--primary', savedColor);
+        if (savedTheme === 'dark') {
+            root.setAttribute('data-theme', 'dark');
+            darkModeToggle.checked = true;
+        }
+
+        // Render Color Grid
+        colors.forEach(color => {
+            const div = document.createElement('div');
+            div.className = 'color-option';
+            div.style.backgroundColor = color;
+            if (color === savedColor) div.classList.add('selected');
+            
+            div.onclick = () => {
+                document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+                div.classList.add('selected');
+                root.style.setProperty('--primary', color);
+                localStorage.setItem('theme_color', color);
+            };
+            colorGrid.appendChild(div);
+        });
+
+        // Toggle Dark Mode
+        darkModeToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                root.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme_mode', 'dark');
+            } else {
+                root.removeAttribute('data-theme');
+                localStorage.setItem('theme_mode', 'light');
+            }
+        });
+
+        // --- ELEMENTS ---
         const messages = document.getElementById("messages");
         const input = document.getElementById("input");
         const usernameInput = document.getElementById("username");
         const imageFileInput = document.getElementById("imageFile");
         const uploadBtn = document.getElementById("uploadBtn");
-        const volumeBtn = document.getElementById("volume-btn");
-        const onlineStatus = document.getElementById("onlineStatus");
-        const userListDisplay = document.getElementById("userListDisplay");
+        const settingsBtn = document.getElementById("settings-btn");
+        const settingsModal = document.getElementById("settingsModal");
+        const closeSettings = document.getElementById("closeSettings");
+        const soundToggle = document.getElementById("soundToggle");
         
-        let soundEnabled = true;
+        let soundEnabled = savedSound !== 'false'; // Default to true
+        soundToggle.checked = soundEnabled;
+
+        soundToggle.addEventListener('change', (e) => {
+            soundEnabled = e.target.checked;
+            localStorage.setItem('sound_enabled', soundEnabled);
+        });
+
+        // Modal Logic
+        settingsBtn.onclick = () => settingsModal.style.display = 'flex';
+        closeSettings.onclick = () => settingsModal.style.display = 'none';
+        settingsModal.onclick = (e) => {
+            if (e.target === settingsModal) settingsModal.style.display = 'none';
+        };
+
+        // --- CHAT LOGIC ---
         let unreadCount = 0;
         const originalTitle = document.title;
         const beepUrl = "https://www.myinstants.com/media/sounds/discord-notification.mp3"; 
@@ -321,11 +485,6 @@ def index():
         if(localStorage.getItem('chat_username')) {
             usernameInput.value = localStorage.getItem('chat_username');
         }
-
-        // --- Notifications ---
-        document.body.addEventListener('click', () => {
-            if (Notification.permission === 'default') Notification.requestPermission();
-        }, { once: true });
 
         window.addEventListener('focus', () => {
             unreadCount = 0;
@@ -336,7 +495,7 @@ def index():
             if (document.hidden || sender !== usernameInput.value) {
                 if (soundEnabled) {
                     audio.currentTime = 0;
-                    audio.play().catch(e => console.log("Audio blocked until interaction"));
+                    audio.play().catch(e => console.log("Audio blocked"));
                 }
                 if (document.hidden) {
                     unreadCount++;
@@ -351,14 +510,6 @@ def index():
             }
         }
 
-        volumeBtn.addEventListener('click', () => {
-            soundEnabled = !soundEnabled;
-            volumeBtn.innerText = soundEnabled ? "粕" : "舶";
-            volumeBtn.style.color = soundEnabled ? "#4b5563" : "#ef4444";
-        });
-
-        // --- Chat UI Logic ---
-
         function scrollToBottom() {
             messages.scrollTop = messages.scrollHeight;
         }
@@ -366,7 +517,6 @@ def index():
         function addMessage(data) {
             const isMe = data.username === usernameInput.value;
             
-            // System Messages
             if (data.type === 'system') {
                 const sysDiv = document.createElement("div");
                 sysDiv.className = "system-message";
@@ -376,15 +526,12 @@ def index():
                 return;
             }
 
-            // Notify
             const notifyText = data.type === 'image' ? (data.msg || 'sent an image') : data.msg;
             notifyUser(data.username, notifyText);
 
-            // Container Row
             const row = document.createElement("div");
             row.className = `message-row ${isMe ? 'self' : 'other'}`;
 
-            // Bubble
             const bubble = document.createElement("div");
             bubble.className = "message-bubble";
 
@@ -404,7 +551,6 @@ def index():
                 bubble.innerText = data.msg;
             }
 
-            // Meta (Name + Time)
             const meta = document.createElement("div");
             meta.className = "message-meta";
             
@@ -415,7 +561,6 @@ def index():
             const timeSpan = document.createElement("span");
             timeSpan.innerText = data.timestamp || "";
             
-            // Order depends on sender for aesthetics
             if (isMe) {
                 meta.appendChild(timeSpan);
                 meta.appendChild(nameSpan);
@@ -433,7 +578,6 @@ def index():
         function sendMessage() {
             const msg = input.value.trim();
             const user = usernameInput.value.trim() || "Anon";
-            // Check hidden image url input in case someone pasted a raw link manually
             const imageUrl = document.getElementById('imageUrl').value.trim(); 
             
             if (msg || imageUrl) {
@@ -454,8 +598,6 @@ def index():
             }
         }
 
-        // --- Inputs & Uploads ---
-
         input.addEventListener("keypress", (e) => { if(e.key === "Enter") sendMessage(); });
         document.getElementById("send").addEventListener("click", sendMessage);
 
@@ -465,8 +607,6 @@ def index():
             if (file) handleFile(file);
             imageFileInput.value = ''; 
         });
-
-        // --- PASTE / DROP HANDLERS (Keep this logic!) ---
 
         function handleMediaInput(e, dataTransfer) {
             const html = dataTransfer.getData('text/html');
@@ -517,31 +657,31 @@ def index():
         });
 
         // --- Socket Events ---
-
         socket.on("connect", () => {
             const user = usernameInput.value || "Anon";
             socket.emit('register', user);
         });
 
         socket.on("disconnect", () => {
-            onlineStatus.innerText = "Offline";
-            onlineStatus.style.color = "#ef4444";
+            document.getElementById('onlineStatus').innerText = "Offline";
+            document.getElementById('onlineStatus').style.color = "#ef4444";
         });
 
         socket.on("message", (data) => addMessage(data));
 
         socket.on("user_list", (data) => {
-            onlineStatus.innerText = `${data.count} Online`;
+            document.getElementById('onlineStatus').innerText = `${data.count} Online`;
+            document.getElementById('onlineStatus').style.color = "";
             
-            userListDisplay.innerHTML = '<div class="tooltip-header">Active Users</div>';
+            const list = document.getElementById('userListDisplay');
+            list.innerHTML = '<div class="tooltip-header">Active Users</div>';
             data.users.forEach(user => {
                 const div = document.createElement("div");
                 div.className = "user-item";
                 div.innerText = user;
-                userListDisplay.appendChild(div);
+                list.appendChild(div);
             });
         });
-
     </script>
 </body>
 </html>
